@@ -24,6 +24,9 @@ int main() {
 			if(response.second==100){
 				return 0;
 			}
+			if(response.first.empty()){
+				continue;
+			}
 			cout<<response.first<<endl;
 		}
 		catch(exception &e){

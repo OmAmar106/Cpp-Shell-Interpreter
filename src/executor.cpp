@@ -1,5 +1,10 @@
 #include<bits/stdc++.h>
+#include <cstddef>
 #include <unistd.h>
+#include<sys/wait.h>
+#include<sys/types.h>
+#include<cstdlib>
+
 using namespace std;
 
 set<string> builtin = {
@@ -52,12 +57,38 @@ pair<string,int> exe(string input){
 				}
 				string full_path = dir+'/'+list_input[1];
 				if(access(full_path.c_str(),X_OK)==0){
-					return {list_input[1]+" is "+full_path,1};
+					return {list_input[1]+" is "+full_path,3};
 				}
 			}
 		}
 		
 		return {st1+": not found",1};
     }
+	else{
+		auto [resp,code] = exe("type "+input);
+		if(code==3){
+			int i = resp.size()-1;
+			while(resp[i]!=' '){
+				i -= 1;
+			}
+			string execute = resp.substr(i+1,resp.size()-i);
+			
+			pid_t pid = fork();
+			if(pid==0){
+				vector<char*> argv;
+				for (auto& arg : list_input) {
+					argv.push_back(arg.data());
+				}
+				argv.push_back(nullptr);
+				execv(execute.c_str(),argv.data());
+				perror("execv");
+				exit(1);
+			}
+			else{
+				waitpid(pid,nullptr,0);
+			}
+			return {"",4};
+		}
+	}
 	throw invalid_argument("command does not exist");
 }
