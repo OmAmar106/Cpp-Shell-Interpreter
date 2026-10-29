@@ -13,3 +13,6 @@ quoting
 pipe for output, error etc.
 tab command autocomplete
 tab filename autocomplete
+complete functionality
+jobs
+

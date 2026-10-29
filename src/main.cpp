@@ -1,58 +1,142 @@
 #include "executor.h"
 #include <iostream>
 #include <string>
-#include<bits/stdc++.h>
+#include <bits/stdc++.h>
 #include <termios.h>
 #include <cstdio>
-#include<filesystem>
+#include <filesystem>
+#include <unistd.h>
 
 using namespace std;
 namespace fs = std::filesystem;
 
+vector<string> split_candidates(string output) {
+    vector<string> candidates;
+    stringstream ss(output);
+    string candidate;
+
+    while (getline(ss, candidate)) {
+        if (!candidate.empty() && candidate.back() == '\r') {
+            candidate.pop_back();
+        }
+        if (!candidate.empty()) {
+            candidates.push_back(candidate);
+        }
+    }
+
+    sort(candidates.begin(), candidates.end());
+    return candidates;
+}
+
 string read_input() {
-	set<string> builtin = {"exit","echo"};
+    if (!isatty(STDIN_FILENO)) {
+        string input;
+        if (!getline(cin, input)) return "";
+        return input;
+    }
 
-	const char* path_env = getenv("PATH");
-	if(path_env!=nullptr){
-		stringstream paths(path_env);
-		string dir;
+    set<string> builtin = {"exit", "echo"};
 
-		while (getline(paths, dir, ':')) {
-			if (dir.empty()) dir = ".";
-			fs::path dir1 = dir;
-			if(fs::exists(dir1) && fs::is_directory(dir1)){
-				for(const auto& entry:fs::directory_iterator(dir1)){
-					if (access(entry.path().c_str(), X_OK) == 0) {
-						builtin.insert(entry.path().filename().string());
-					}
-				}
-			}
-			
-		}
-	}
+    const char* path_env = getenv("PATH");
+    if (path_env != nullptr) {
+        stringstream paths(path_env);
+        string dir;
 
-	if (!isatty(STDIN_FILENO)) {
-		string input;
-		if (!getline(cin, input)) return "";
-		return input;
-	}
+        while (getline(paths, dir, ':')) {
+            if (dir.empty()) dir = ".";
+            fs::path dir1 = dir;
+            if (fs::exists(dir1) && fs::is_directory(dir1)) {
+                for (const auto& entry : fs::directory_iterator(dir1)) {
+                    if (access(entry.path().c_str(), X_OK) == 0) {
+                        builtin.insert(entry.path().filename().string());
+                    }
+                }
+            }
+        }
+    }
 
     termios oldt, newt;
-    tcgetattr(STDIN_FILENO, &oldt);
+    if (tcgetattr(STDIN_FILENO, &oldt) != 0) {
+        string input;
+        if (!getline(cin, input)) return "";
+        return input;
+    }
+
     newt = oldt;
     newt.c_lflag &= ~(ICANON | ECHO);
-    tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+    newt.c_cc[VMIN] = 1;
+    newt.c_cc[VTIME] = 0;
 
+    if (tcsetattr(STDIN_FILENO, TCSANOW, &newt) != 0) {
+		perror("tcsetattr");
+		return "";
+	}
     string input;
     char c;
+    bool f = false;
 
-	bool f = false;
     while (read(STDIN_FILENO, &c, 1) == 1) {
         if (c == '\n' || c == '\r') {
             cout << '\n';
             break;
         } else if (c == '\t') {
-			if (input.find(' ') != string::npos) {
+			auto [flag, op] = check_complete(input);
+
+			if (flag) {
+				vector<string> candidates = split_candidates(op);
+
+				if (candidates.size() == 1) {
+					string lastWord = input.substr(input.find_last_of(' ') == string::npos
+													? 0
+													: input.find_last_of(' ') + 1);
+					string completion = candidates[0];
+
+					if (completion.rfind(lastWord, 0) == 0) {
+						string suffix = completion.substr(lastWord.size());
+						cout << suffix << " ";
+						input += suffix + " ";
+					}
+					f = false;
+					continue;
+				}
+
+				if (!candidates.empty()) {
+					string lcp = candidates[0];
+
+					for (const auto& candidate : candidates) {
+						size_t i = 0;
+						while (i < lcp.size() && i < candidate.size() &&
+							lcp[i] == candidate[i]) {
+							i++;
+						}
+						lcp = lcp.substr(0, i);
+					}
+
+					size_t lastSpace = input.find_last_of(' ');
+					size_t start = lastSpace == string::npos ? 0 : lastSpace + 1;
+					string current = input.substr(start);
+
+					if (lcp.size() > current.size()) {
+						string suffix = lcp.substr(current.size());
+						cout << suffix;
+						input += suffix;
+						f = false;
+					} else if (f) {
+						f = false;
+						cout << '\n';
+						for (const auto& candidate : candidates) {
+							cout << candidate << "  ";
+						}
+						cout << "\n$ " << input;
+					} else {
+						f = true;
+						cout << '\a';
+					}
+
+					continue;
+				}
+			}
+            if (input.find(' ') != string::npos) {
 				size_t pos = input.find_last_of(' ');
 				string prefix = input.substr(pos + 1);
 
@@ -71,12 +155,45 @@ string read_input() {
 					}
 				}
 
+				sort(matches.begin(), matches.end());
+
 				if (matches.size() == 1) {
 					string completion = matches[0].substr(name.size());
-    				completion += fs::is_directory(dir+'/'+matches[0]) ? '/' : ' ';
+					completion += fs::is_directory(fs::path(dir) / matches[0]) ? '/' : ' ';
 					cout << completion;
 					input += completion;
 					f = false;
+				} else if (matches.size() > 1) {
+					string common = matches[0];
+
+					for (const auto& match : matches) {
+						size_t j = 0;
+						while (j < common.size() && j < match.size() && common[j] == match[j]) {
+							j++;
+						}
+						common = common.substr(0, j);
+					}
+
+					if (common.size() > name.size()) {
+						string completion = common.substr(name.size());
+						cout << completion;
+						input += completion;
+						f = false;
+					} else if (f) {
+						f = false;
+						cout << '\n';
+						for (const auto& match : matches) {
+							cout << match;
+							if (fs::is_directory(fs::path(dir) / match)) {
+								cout << '/';
+							}
+							cout << "  ";
+						}
+						cout << "\n$ " << input;
+					} else {
+						cout << '\a';
+						f = true;
+					}
 				} else {
 					cout << '\a';
 					f = false;
@@ -84,63 +201,60 @@ string read_input() {
 
 				continue;
 			}
+
             vector<string> matches;
 
-			for (const auto& cmd : builtin) {
-				if (cmd.rfind(input, 0) == 0) {
-					matches.push_back(cmd);
-				}
-			}
+            for (const auto& cmd : builtin) {
+                if (cmd.rfind(input, 0) == 0) {
+                    matches.push_back(cmd);
+                }
+            }
 
-			if (matches.size() == 1) {
-				cout << matches[0].substr(input.size())<<" ";
-				input = matches[0]+" ";
-				f = false;
-			} else if (!matches.empty()) {
-				string st = matches[0];
-				for(auto it:matches){
-					for(int j=0;j<it.size();j++){
-						if(st[j]!=it[j]){
-							st = st.substr(0,j);
-							break;
-						}
-					}
-				}
-				if(st==input){
-					// cout<<f<<" "<<st<<input<<endl;
-					if(f){
-						f = false;
-						cout<<endl;
-						for(auto it:matches){
-							cout<<it<<" ";
-						}
-						cout<<endl;
-						cout<<"$ "<<input;
-						continue;
-					}
-					cout << '\a';
-					f = true;
-				}
-				else{
-					while(input!=st){
-						cout<<st[input.size()];
-						input += st[input.size()];
-					}
-					f = false;
-				}
-			}
-			else{
-				f = false;
-				cout<<'\x07';
-			}
+            if (matches.size() == 1) {
+                string completion = matches[0].substr(input.size()) + " ";
+                cout << completion;
+                input += completion;
+                f = false;
+            } else if (!matches.empty()) {
+                string st = matches[0];
+                for (const auto& it : matches) {
+                    size_t j = 0;
+                    while (j < st.size() && j < it.size() && st[j] == it[j]) {
+                        j++;
+                    }
+                    st = st.substr(0, j);
+                }
+
+                if (st == input) {
+                    if (f) {
+                        f = false;
+                        cout << '\n';
+                        for (const auto& it : matches) {
+                            cout << it << "  ";
+                        }
+                        cout << "\n$ " << input;
+                    } else {
+                        cout << '\a';
+                        f = true;
+                    }
+                } else {
+                    string completion = st.substr(input.size());
+                    cout << completion;
+                    input += completion;
+                    f = false;
+                }
+            } else {
+                f = false;
+                cout << '\a';
+            }
         } else if (c == 127 || c == '\b') {
             if (!input.empty()) {
                 input.pop_back();
                 cout << "\b \b";
-				f = false;
+                f = false;
             }
         } else {
-			f = false;
+            f = false;
             input += c;
             cout << c;
         }
@@ -151,30 +265,29 @@ string read_input() {
 }
 
 int main() {
-	// Flush after every std::cout / std:cerr
-	cout << unitbuf;
-	cerr << unitbuf;
+    cout << unitbuf;
+    cerr << unitbuf;
 
-	// TODO: Uncomment the code below to pass the first stage
+    while (true) {
+        cout << "$ ";
 
-	while(1){
-		cout << "$ ";
-		
-		string a = read_input();
+        string a = read_input();
 
-		try{
-			pair<string,int> response = exe(a);
-			if(response.second==100){
-				return 0;
-			}
-			if(response.first.empty()){
-				continue;
-			}
-			cout<<response.first<<endl;
-		}
-		catch(exception &e){
-			cout<<a<<": command not found"<<endl;
-		}		
-	}
+        if (a.empty() && cin.eof()) {
+            return 0;
+        }
 
+        try {
+            pair<string, int> response = exe(a);
+            if (response.second == 100) {
+                return 0;
+            }
+            if (response.first.empty()) {
+                continue;
+            }
+            cout << response.first << endl;
+        } catch (exception& e) {
+            cout << a << ": command not found" << endl;
+        }
+    }
 }
