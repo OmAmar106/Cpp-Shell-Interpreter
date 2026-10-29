@@ -3,4 +3,4 @@
 
 using namespace std;
 
-pair<string, int> exe(string input, string output_file="");
+pair<string, int> exe(string input, string output_file="",bool stderr_redirect=false,bool append=false);

@@ -10,5 +10,6 @@ running program
 pwd
 cd
 quoting
-pipe stdout
-
+pipe for output, error etc.
+tab command autocomplete
+tab filename autocomplete
