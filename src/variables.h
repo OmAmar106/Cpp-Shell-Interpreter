@@ -4,5 +4,7 @@
 #include <utility>
 #include <vector>
 
-std::string dollar(const std::string& input);
-std::pair<std::string, int> builtin_declare(const std::vector<std::string>& args);
+using namespace std;
+
+string dollar(const string& input);
+pair<string, int> builtin_declare(const vector<string>& args);

@@ -5,6 +5,8 @@
 #include <utility>
 #include <vector>
 
-std::string check_jobs();
-int add_job(pid_t pid, const std::string& command);
-std::pair<std::string, int> builtin_jobs(const std::vector<std::string>& args);
+using namespace std;
+
+string check_jobs();
+int add_job(pid_t pid, const string& command);
+pair<string, int> builtin_jobs(const vector<string>& args);

@@ -3,9 +3,11 @@
 #include "variables.h"
 #include <cctype>
 
-std::vector<std::string> parse(const std::string& input) {
-    std::vector<std::string> args;
-    std::string cur;
+using namespace std;
+
+vector<string> parse(const string& input) {
+    vector<string> args;
+    string cur;
     char quote = 0;
     bool active = false;
 
@@ -53,9 +55,9 @@ std::vector<std::string> parse(const std::string& input) {
     return args;
 }
 
-std::vector<std::string> split_pipeline(const std::string& input) {
-    std::vector<std::string> commands;
-    std::string cur;
+vector<string> split_pipeline(const string& input) {
+    vector<string> commands;
+    string cur;
     char quote = 0;
 
     for (int i = 0; i < (int)input.size(); i++) {
@@ -76,7 +78,7 @@ std::vector<std::string> split_pipeline(const std::string& input) {
             size_t l = cur.find_first_not_of(" \t");
             size_t r = cur.find_last_not_of(" \t");
 
-            if (l == std::string::npos) return {};
+            if (l == string::npos) return {};
 
             commands.push_back(cur.substr(l, r - l + 1));
             cur.clear();
@@ -89,7 +91,7 @@ std::vector<std::string> split_pipeline(const std::string& input) {
     size_t r = cur.find_last_not_of(" \t");
 
     if (!commands.empty()) {
-        if (l == std::string::npos) return {};
+        if (l == string::npos) return {};
         commands.push_back(cur.substr(l, r - l + 1));
     }
 

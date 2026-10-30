@@ -5,22 +5,24 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-static std::map<std::string, std::string> mapping;
+using namespace std;
 
-std::pair<bool, std::string> check_complete(const std::string& prefix) {
+static map<string, string> mapping;
+
+pair<bool, string> check_complete(const string& prefix) {
     if (prefix.empty()) return {false, ""};
 
-    std::string command = prefix.substr(0, prefix.find(' '));
+    string command = prefix.substr(0, prefix.find(' '));
 
     size_t lastSpace = prefix.find_last_of(' ');
-    std::string current = lastSpace == std::string::npos ? prefix : prefix.substr(lastSpace + 1);
+    string current = lastSpace == string::npos ? prefix : prefix.substr(lastSpace + 1);
 
-    std::string previous;
-    if (lastSpace != std::string::npos && lastSpace > 0) {
+    string previous;
+    if (lastSpace != string::npos && lastSpace > 0) {
         size_t prevSpace = prefix.find_last_of(' ', lastSpace - 1);
         previous = prefix.substr(
-            prevSpace == std::string::npos ? 0 : prevSpace + 1,
-            lastSpace - (prevSpace == std::string::npos ? 0 : prevSpace + 1)
+            prevSpace == string::npos ? 0 : prevSpace + 1,
+            lastSpace - (prevSpace == string::npos ? 0 : prevSpace + 1)
         );
     }
 
@@ -39,7 +41,7 @@ std::pair<bool, std::string> check_complete(const std::string& prefix) {
         close(pipefd[1]);
 
         setenv("COMP_LINE", prefix.c_str(), 1);
-        std::string point = std::to_string(prefix.size());
+        string point = to_string(prefix.size());
         setenv("COMP_POINT", point.c_str(), 1);
 
         execlp(mapping[command].c_str(), mapping[command].c_str(),
@@ -54,7 +56,7 @@ std::pair<bool, std::string> check_complete(const std::string& prefix) {
         return {false, ""};
     }
 
-    std::string output;
+    string output;
     char buffer[4096];
     ssize_t n;
 
@@ -74,18 +76,18 @@ std::pair<bool, std::string> check_complete(const std::string& prefix) {
     return {!output.empty(), output};
 }
 
-std::optional<std::pair<std::string, int>> builtin_complete(const std::vector<std::string>& args) {
+optional<pair<string, int>> builtin_complete(const vector<string>& args) {
     if (args[1] == "-p") {
         if (mapping.find(args[2]) != mapping.end()) {
-            return std::make_pair("complete -C '" + mapping[args[2]] + "' " + args[2], 2);
+            return make_pair("complete -C '" + mapping[args[2]] + "' " + args[2], 2);
         }
-        return std::make_pair("complete: " + args[2] + ": no completion specification", 4);
+        return make_pair("complete: " + args[2] + ": no completion specification", 4);
     } else if (args[1] == "-C") {
         mapping[args[3]] = args[2];
-        return std::make_pair("", 2);
+        return make_pair("", 2);
     } else if (args[1] == "-r") {
         mapping.erase(mapping.find(args[2]));
-        return std::make_pair("", 2);
+        return make_pair("", 2);
     }
-    return std::nullopt;
+    return nullopt;
 }

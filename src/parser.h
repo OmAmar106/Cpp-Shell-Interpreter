@@ -3,5 +3,7 @@
 #include <string>
 #include <vector>
 
-std::vector<std::string> parse(const std::string& input);
-std::vector<std::string> split_pipeline(const std::string& input);
+using namespace std;
+
+vector<string> parse(const string& input);
+vector<string> split_pipeline(const string& input);

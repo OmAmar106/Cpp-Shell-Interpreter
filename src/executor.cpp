@@ -9,17 +9,19 @@
 #include <unistd.h>
 #include <vector>
 
-std::pair<std::string, int> exe(
-    const std::string& input,
-    const std::string& output_file,
+using namespace std;
+
+pair<string, int> exe(
+    const string& input,
+    const string& output_file,
     bool stderr_redirect,
     bool append
 ) {
-    std::vector<std::string> list_input = parse(input);
+    vector<string> list_input = parse(input);
 
     if (list_input.empty()) return {"", 1};
 
-    std::vector<std::string> commands = split_pipeline(input);
+    vector<string> commands = split_pipeline(input);
 
     if (commands.size() > 1) {
         return run_pipeline(commands);
@@ -37,13 +39,13 @@ std::pair<std::string, int> exe(
         return run_background(input);
     }
 
-    std::string st;
+    string st;
     for (int i = 0; i < (int)list_input.size(); i++) {
         if (list_input[i] == ">" || list_input[i] == "1>" || list_input[i] == "2>" ||
             list_input[i] == ">>" || list_input[i] == "1>>" || list_input[i] == "2>>") {
             if (i + 1 >= (int)list_input.size()) return {"", 1};
 
-            std::string f_name = list_input[i + 1];
+            string f_name = list_input[i + 1];
             bool err = list_input[i] == "2>" || list_input[i] == "2>>";
             bool app = list_input[i] == ">>" || list_input[i] == "1>>" || list_input[i] == "2>>";
 
@@ -52,11 +54,11 @@ std::pair<std::string, int> exe(
             if (code != 1999) {
                 if (err) {
                     if (!op.empty()) {
-                        std::cout << op;
-                        if (op.back() != '\n') std::cout << '\n';
+                        cout << op;
+                        if (op.back() != '\n') cout << '\n';
                     }
                 } else {
-                    std::ofstream file(f_name, app ? std::ios::app : std::ios::out);
+                    ofstream file(f_name, app ? ios::app : ios::out);
                     file << op;
                     if (!op.empty() && op.back() != '\n') file << '\n';
                 }

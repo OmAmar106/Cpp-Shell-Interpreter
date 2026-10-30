@@ -4,13 +4,15 @@
 #include <cerrno>
 #include <sys/wait.h>
 
+using namespace std;
+
 static int current_job = 0;
 static int previous_job = 0;
 
-static std::vector<int> job;
-static std::vector<int> process;
-static std::vector<std::string> com;
-static std::vector<int> job_history;
+static vector<int> job;
+static vector<int> process;
+static vector<string> com;
+static vector<int> job_history;
 
 static void update_job_markers() {
     current_job = 0;
@@ -19,7 +21,7 @@ static void update_job_markers() {
     for (int i = (int)job_history.size() - 1; i >= 0; i--) {
         int id = job_history[i];
 
-        if (std::find(job.begin(), job.end(), id) == job.end()) {
+        if (find(job.begin(), job.end(), id) == job.end()) {
             continue;
         }
 
@@ -39,11 +41,11 @@ static void erase_job(int i) {
     update_job_markers();
 }
 
-int add_job(pid_t pid, const std::string& command) {
+int add_job(pid_t pid, const string& command) {
     int next_job = 1;
 
     for (int id : job) {
-        next_job = std::max(next_job, id + 1);
+        next_job = max(next_job, id + 1);
     }
 
     job.push_back(next_job);
@@ -57,8 +59,8 @@ int add_job(pid_t pid, const std::string& command) {
     return next_job;
 }
 
-std::string check_jobs() {
-    std::string st;
+string check_jobs() {
+    string st;
 
     for (int i = 0; i < (int)process.size();) {
         int status = 0;
@@ -67,11 +69,11 @@ std::string check_jobs() {
         if (ret > 0 || (ret == -1 && errno == ECHILD)) {
             int finished_job = job[i];
 
-            std::string marker = finished_job == current_job ? "+" :
+            string marker = finished_job == current_job ? "+" :
                                  finished_job == previous_job ? "-" : " ";
 
             if (!st.empty()) st += "\n";
-            st += "[" + std::to_string(finished_job) + "]" + marker +
+            st += "[" + to_string(finished_job) + "]" + marker +
                   "  Done                    " +
                   com[i].substr(0, com[i].size() - 1);
 
@@ -84,27 +86,27 @@ std::string check_jobs() {
     return st;
 }
 
-std::pair<std::string, int> builtin_jobs(const std::vector<std::string>&) {
-    std::string st;
+pair<string, int> builtin_jobs(const vector<string>&) {
+    string st;
 
     for (int i = 0; i < (int)process.size();) {
         int status = 0;
         pid_t ret = waitpid(process[i], &status, WNOHANG);
 
         int id = job[i];
-        std::string marker = id == current_job ? "+" :
+        string marker = id == current_job ? "+" :
                              id == previous_job ? "-" : " ";
 
         if (!st.empty()) st += "\n";
 
         if (ret > 0 || (ret == -1 && errno == ECHILD)) {
-            st += "[" + std::to_string(id) + "]" + marker +
+            st += "[" + to_string(id) + "]" + marker +
                   "  Done                    " +
                   com[i].substr(0, com[i].size() - 1);
 
             erase_job(i);
         } else {
-            st += "[" + std::to_string(id) + "]" + marker +
+            st += "[" + to_string(id) + "]" + marker +
                   "  Running                 " + com[i];
             i++;
         }

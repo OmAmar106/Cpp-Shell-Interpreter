@@ -4,5 +4,7 @@
 #include <utility>
 #include <vector>
 
-bool is_builtin(const std::string& name);
-std::pair<std::string, int> execute_builtin(const std::vector<std::string>& args);
+using namespace std;
+
+bool is_builtin(const string& name);
+pair<string, int> execute_builtin(const vector<string>& args);

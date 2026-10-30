@@ -5,5 +5,7 @@
 #include <utility>
 #include <vector>
 
-std::pair<bool, std::string> check_complete(const std::string& prefix);
-std::optional<std::pair<std::string, int>> builtin_complete(const std::vector<std::string>& args);
+using namespace std;
+
+pair<bool, string> check_complete(const string& prefix);
+optional<pair<string, int>> builtin_complete(const vector<string>& args);

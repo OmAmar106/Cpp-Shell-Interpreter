@@ -2,16 +2,18 @@
 
 #include <map>
 
-static std::map<std::string, std::string> declare_vars;
+using namespace std;
 
-std::string dollar(const std::string& input) {
+static map<string, string> declare_vars;
+
+string dollar(const string& input) {
     if (input[0] == '$' && (input.size() == 1 || input[1] != '{')) {
         return declare_vars[input.substr(1, input.size() - 1)];
     }
 
-    std::string st;
+    string st;
     bool f = false;
-    std::string st2;
+    string st2;
     for (int i = 0; i < (int)input.size();) {
         if (input[i] == '$' && i + 1 < (int)input.size() && input[i + 1] == '{') {
             f = true;
@@ -39,7 +41,7 @@ std::string dollar(const std::string& input) {
     return st;
 }
 
-std::pair<std::string, int> builtin_declare(const std::vector<std::string>& args) {
+pair<string, int> builtin_declare(const vector<string>& args) {
     if (args[1] == "-p") {
         if (declare_vars.find(args[2]) != declare_vars.end()) {
             return {"declare -- " + args[2] + "=" + "\"" + declare_vars[args[2]] + "\"", 2};
@@ -49,7 +51,7 @@ std::pair<std::string, int> builtin_declare(const std::vector<std::string>& args
         if ('0' <= args[1][0] && args[1][0] <= '9') {
             return {"declare: `" + args[1] + "': not a valid identifier", 2};
         }
-        std::string lhs, rhs;
+        string lhs, rhs;
         int ind = 0;
         while (ind < (int)args[1].size() && args[1][ind] != '=') {
             lhs += args[1][ind];

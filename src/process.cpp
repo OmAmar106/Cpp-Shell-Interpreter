@@ -13,17 +13,19 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-std::string find_executable(const std::string& name) {
+using namespace std;
+
+string find_executable(const string& name) {
     const char* path_env = getenv("PATH");
     if (path_env == nullptr) return "";
 
-    std::stringstream paths(path_env);
-    std::string dir;
+    stringstream paths(path_env);
+    string dir;
 
     while (getline(paths, dir, ':')) {
         if (dir.empty()) dir = ".";
 
-        std::string full_path = dir + "/" + name;
+        string full_path = dir + "/" + name;
         if (access(full_path.c_str(), X_OK) == 0) {
             return full_path;
         }
@@ -32,13 +34,13 @@ std::string find_executable(const std::string& name) {
     return "";
 }
 
-std::pair<std::string, int> run_external(
-    std::vector<std::string>& args,
-    const std::string& output_file,
+pair<string, int> run_external(
+    vector<string>& args,
+    const string& output_file,
     bool stderr_redirect,
     bool append
 ) {
-    std::string execute = find_executable(args[0]);
+    string execute = find_executable(args[0]);
 
     if (execute.empty()) {
         return {args[0] + ": not found", 1};
@@ -56,7 +58,7 @@ std::pair<std::string, int> run_external(
             close(fd);
         }
 
-        std::vector<char*> argv;
+        vector<char*> argv;
         for (auto& arg : args) {
             argv.push_back(arg.data());
         }
@@ -74,9 +76,9 @@ std::pair<std::string, int> run_external(
     return {"", 1999};
 }
 
-std::pair<std::string, int> run_pipeline(const std::vector<std::string>& commands) {
+pair<string, int> run_pipeline(const vector<string>& commands) {
     int n = commands.size();
-    std::vector<std::array<int, 2>> pipes(n - 1);
+    vector<array<int, 2>> pipes(n - 1);
 
     for (int i = 0; i < n - 1; i++) {
         if (pipe(pipes[i].data()) == -1) {
@@ -88,7 +90,7 @@ std::pair<std::string, int> run_pipeline(const std::vector<std::string>& command
         }
     }
 
-    std::vector<pid_t> pids;
+    vector<pid_t> pids;
 
     for (int i = 0; i < n; i++) {
         pid_t pid = fork();
@@ -145,10 +147,10 @@ std::pair<std::string, int> run_pipeline(const std::vector<std::string>& command
     return {"", 1999};
 }
 
-std::pair<std::string, int> run_background(const std::string& input) {
-    std::string command = input;
+pair<string, int> run_background(const string& input) {
+    string command = input;
     size_t amp = command.find_last_not_of(" \t");
-    if (amp != std::string::npos) {
+    if (amp != string::npos) {
         command.erase(amp);
     }
 
@@ -159,11 +161,11 @@ std::pair<std::string, int> run_background(const std::string& input) {
     pid_t pid = fork();
 
     if (pid == 0) {
-        if (command.find("&&") != std::string::npos) {
-            std::string part;
+        if (command.find("&&") != string::npos) {
+            string part;
             size_t pos = 0;
 
-            while ((pos = command.find("&&")) != std::string::npos) {
+            while ((pos = command.find("&&")) != string::npos) {
                 part = command.substr(0, pos);
                 command.erase(0, pos + 2);
 
@@ -172,12 +174,12 @@ std::pair<std::string, int> run_background(const std::string& input) {
                 }
 
                 size_t start = part.find_first_not_of(" \t");
-                if (start != std::string::npos) {
+                if (start != string::npos) {
                     part = part.substr(start);
                     auto [output, code] = exe(part);
 
                     if (!output.empty()) {
-                        std::cout << output << '\n';
+                        cout << output << '\n';
                     }
 
                     if (code == 100) _exit(0);
@@ -185,31 +187,31 @@ std::pair<std::string, int> run_background(const std::string& input) {
             }
 
             size_t start = command.find_first_not_of(" \t");
-            if (start != std::string::npos) {
+            if (start != string::npos) {
                 command = command.substr(start);
                 auto [output, code] = exe(command);
 
                 if (!output.empty()) {
-                    std::cout << output << '\n';
+                    cout << output << '\n';
                 }
             }
 
             _exit(0);
         }
 
-        std::vector<std::string> args = parse(command);
+        vector<string> args = parse(command);
         if (args.empty()) _exit(0);
 
         if (is_builtin(args[0]) || args[0] == "cd") {
             auto [output, code] = exe(command);
-            if (!output.empty()) std::cout << output << '\n';
+            if (!output.empty()) cout << output << '\n';
             _exit(0);
         }
 
-        std::string execute = find_executable(args[0]);
+        string execute = find_executable(args[0]);
         if (execute.empty()) _exit(127);
 
-        std::vector<char*> argv;
+        vector<char*> argv;
         for (auto& arg : args) {
             argv.push_back(arg.data());
         }
@@ -222,5 +224,5 @@ std::pair<std::string, int> run_background(const std::string& input) {
     if (pid < 0) return {"", 1};
 
     int next_job = add_job(pid, input);
-    return {"[" + std::to_string(next_job) + "] " + std::to_string(pid), 2};
+    return {"[" + to_string(next_job) + "] " + to_string(pid), 2};
 }
