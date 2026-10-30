@@ -15,4 +15,6 @@ tab command autocomplete
 tab filename autocomplete
 complete functionality
 jobs
-
+pipelines
+history
+declare

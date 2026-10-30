@@ -15,13 +15,98 @@ set<string> builtin = {
     "type",
     "pwd",
 	"complete",
-	"jobs"
+	"jobs",
+	"history",
+    "declare"
 };
 
-int jcount = 1;
+int current_job = 0;
+int previous_job = 0;
+int history_start = 0;
+
+map<string,string> declare;
+
 vector<int> job;
 vector<int> process;
 vector<string> com;
+vector<int> job_history;
+
+vector<string> history;
+
+vector<string> get_history(){
+    return history;
+}
+
+void push_back(string line){
+	history.push_back(line);
+}
+
+void update_job_markers() {
+    current_job = 0;
+    previous_job = 0;
+
+    for (int i = (int)job_history.size() - 1; i >= 0; i--) {
+        int id = job_history[i];
+
+        if (find(job.begin(), job.end(), id) == job.end()) {
+            continue;
+        }
+
+        if (current_job == 0) {
+            current_job = id;
+        } else {
+            previous_job = id;
+            break;
+        }
+    }
+}
+
+void erase_job(int i) {
+    process.erase(process.begin() + i);
+    job.erase(job.begin() + i);
+    com.erase(com.begin() + i);
+    update_job_markers();
+}
+
+
+string dollar(string input){
+    if(input[0]=='$' && (input.size()==1 || input[1]!='{')){
+        return declare[input.substr(1,input.size()-1)];
+    }
+
+    string st;
+    bool f = false;
+    string st2;
+    for(int i=0;i<input.size();){
+        if(input[i]=='$' && i+1<input.size() && input[i+1]=='{'){
+            f = true;
+            i += 2;
+            st2 = "";
+        }
+        else if(input[i]=='$'){
+            st += declare[input.substr(i+1,input.size()-(i+1))];
+            break;
+        }
+        else{
+            if(input[i]=='}'){
+                i += 1;
+                st += declare[st2];
+                f = false;
+                continue;
+            }
+            if(f){
+                st2 += input[i];
+            }
+            else{
+                st += input[i];
+            }
+            i += 1;
+        }
+
+    }
+
+    return st;
+}
 
 vector<string> parse(string input) {
     vector<string> args;
@@ -50,7 +135,10 @@ vector<string> parse(string input) {
             active = true;
         } else if (isspace(c)) {
             if (active) {
-                args.push_back(cur);
+                args.push_back(dollar(cur));
+                if(args.back().empty()){
+                    args.pop_back();
+                }
                 cur.clear();
                 active = false;
             }
@@ -60,12 +148,91 @@ vector<string> parse(string input) {
         }
     }
 
-    if (active) args.push_back(cur);
+    if (active) {
+        args.push_back(dollar(cur));
+        if(args.back().empty()){
+            args.pop_back();
+        }
+    }
 
     return args;
 }
 
+vector<string> split_pipeline(string input) {
+    vector<string> commands;
+    string cur;
+    char quote = 0;
+
+    for (int i = 0; i < input.size(); i++) {
+        char c = input[i];
+
+        if (c == '\\' && quote != '\'') {
+            cur += c;
+            if (i + 1 < input.size()) {
+                cur += input[++i];
+            }
+        }
+        else if (quote) {
+            cur += c;
+            if (c == quote) quote = 0;
+        }
+        else if (c == '"' || c == '\'') {
+            quote = c;
+            cur += c;
+        }
+        else if (c == '|') {
+            size_t l = cur.find_first_not_of(" \t");
+            size_t r = cur.find_last_not_of(" \t");
+
+            if (l == string::npos) return {};
+
+            commands.push_back(cur.substr(l, r - l + 1));
+            cur.clear();
+        }
+        else {
+            cur += c;
+        }
+    }
+
+    size_t l = cur.find_first_not_of(" \t");
+    size_t r = cur.find_last_not_of(" \t");
+
+    if (!commands.empty()) {
+        if (l == string::npos) return {};
+        commands.push_back((cur.substr(l, r - l + 1)));
+    }
+
+    return commands;
+}
+
 map<string,string> mapping;
+
+string check_jobs() {
+    string st;
+
+    for (int i = 0; i < process.size();) {
+        int status = 0;
+        pid_t ret = waitpid(process[i], &status, WNOHANG);
+
+        if (ret > 0 || (ret == -1 && errno == ECHILD)) {
+            int finished_job = job[i];
+
+            string marker = finished_job == current_job ? "+" :
+                            finished_job == previous_job ? "-" : " ";
+
+            if (!st.empty()) st += "\n";
+            st += "[" + to_string(finished_job) + "]" + marker +
+                  "  Done                    " +
+                  com[i].substr(0, com[i].size() - 1);
+
+            erase_job(i);
+        } else {
+            i++;
+        }
+    }
+
+    return st;
+}
 
 pair<bool, string> check_complete(string prefix) {
     if (prefix.empty()) return {false, ""};
@@ -141,7 +308,81 @@ pair<string,int> exe(string input,string output_file="",bool stderr_redirect=fal
 
     vector<string> list_input = parse(input);
 
+
     if(list_input.empty()) return {"",1};
+
+    vector<string> commands = split_pipeline(input);
+
+    if (commands.size() > 1) {
+        int n = commands.size();
+        vector<array<int, 2>> pipes(n - 1);
+
+        for (int i = 0; i < n - 1; i++) {
+            if (pipe(pipes[i].data()) == -1) {
+                for (int j = 0; j < i; j++) {
+                    close(pipes[j][0]);
+                    close(pipes[j][1]);
+                }
+                return {"",1};
+            }
+        }
+
+        vector<pid_t> pids;
+
+        for (int i = 0; i < n; i++) {
+            pid_t pid = fork();
+
+            if (pid == 0) {
+                if (i > 0) {
+                    dup2(pipes[i - 1][0], STDIN_FILENO);
+                }
+
+                if (i < n - 1) {
+                    dup2(pipes[i][1], STDOUT_FILENO);
+                }
+
+                for (int j = 0; j < n - 1; j++) {
+                    close(pipes[j][0]);
+                    close(pipes[j][1]);
+                }
+
+                auto [output, code] = exe(commands[i]);
+
+                if (!output.empty()) {
+                    write(STDOUT_FILENO, output.data(), output.size());
+                    write(STDOUT_FILENO, "\n", 1);
+                }
+
+                _exit(code == 100 ? 0 : 0);
+            }
+
+            if (pid < 0) {
+                for (auto& p : pipes) {
+                    close(p[0]);
+                    close(p[1]);
+                }
+
+                for (pid_t child : pids) {
+                    waitpid(child, nullptr, 0);
+                }
+
+                return {"",1};
+            }
+
+            pids.push_back(pid);
+        }
+
+        for (auto& p : pipes) {
+            close(p[0]);
+            close(p[1]);
+        }
+
+        for (pid_t pid : pids) {
+            waitpid(pid, nullptr, 0);
+        }
+
+        return {"",1999};
+    }
 
     if(!output_file.empty()){
         int flags = O_WRONLY | O_CREAT;
@@ -243,11 +484,22 @@ pair<string,int> exe(string input,string output_file="",bool stderr_redirect=fal
 
 		if (pid < 0) return {"", 1};
 
-		job.push_back(jcount);
+		int next_job = 1;
+
+		for (int id : job) {
+			next_job = max(next_job, id + 1);
+		}
+
+		job.push_back(next_job);
 		process.push_back(pid);
 		com.push_back(input);
 
-		return {"[" + to_string(jcount++) + "] " + to_string(pid), 2};
+		job_history.push_back(next_job);
+
+		previous_job = current_job;
+		current_job = next_job;
+
+		return {"[" + to_string(next_job) + "] " + to_string(pid), 2};
 	}
     string st2;
     for(int i=0;i<list_input.size();i++){
@@ -348,44 +600,97 @@ pair<string,int> exe(string input,string output_file="",bool stderr_redirect=fal
 			return {"",2};
 		}
 	}
-    else if(list_input[0]=="jobs"){
-		for (int i = 0; i < process.size(); ) {
-			int status;
+    else if (list_input[0] == "jobs") {
+		string st;
+
+		for (int i = 0; i < process.size();) {
+			int status = 0;
 			pid_t ret = waitpid(process[i], &status, WNOHANG);
 
+			int id = job[i];
+			string marker = id == current_job ? "+" :
+							id == previous_job ? "-" : " ";
+
+			if (!st.empty()) st += "\n";
+
 			if (ret > 0 || (ret == -1 && errno == ECHILD)) {
-				process.erase(process.begin() + i);
-				job.erase(job.begin() + i);
-				com.erase(com.begin()+i);
+				st += "[" + to_string(id) + "]" + marker +
+					"  Done                    " +
+					com[i].substr(0, com[i].size() - 1);
+
+				erase_job(i);
 			} else {
+				st += "[" + to_string(id) + "]" + marker +
+					"  Running                 " + com[i];
 				i++;
 			}
 		}
-		string st;
 
-		for(int i=0;i<process.size();i++){
-			st += "["+to_string(job[i])+"]"+(i==process.size()-1?"+":i==process.size()-2?"-":"")+"  Running                 "+com[i]+(i==process.size()-1?"":"\n");
-		}
-
-		return {st,2};
+		return {st, 2};
 	}
-    // else if(list_input[0]=="sleep"){
-	// 	pid_t pid = fork();
-
-	// 	job.push_back(jcount);
-	// 	jcount += 1;
-	// 	process.push_back(pid);
-
-	// 	if (pid == 0) {
-	// 		sleep(atoll(list_input[1].c_str()));
-    //         exit(1);
-    //     }
-		
-    //     if (pid > 0 && list_input.back()!="&") {
-    //         waitpid(pid,nullptr,0);
-    //     }
-	// 	return {"["+to_string(jcount-1)+"] "+to_string(pid),2};
-	// }
+    else if(list_input[0]=="history"){
+        if(list_input.size()>1 && list_input[1]=="-r"){
+            ifstream file(list_input[2]);
+            string line;
+            while(getline(file,line)){
+                history.push_back(line);
+            }
+            return {"",2};
+        }
+        else if(list_input.size()>1 && list_input[1]=="-w"){
+            ofstream file(list_input[2]);
+            for(auto it:history){
+                file<<it<<endl;
+            }
+            return {"",2};
+        }
+        else if(list_input.size()>1 && list_input[1]=="-a"){
+            ofstream file(list_input[2], ios::app);
+            for(int i=history_start;i<history.size();i++){
+                file<<history[i]<<endl;
+            }
+            history_start = history.size();
+            return {"",2};
+        }
+		int k = history.size();
+		if(list_input.size()>1){
+			k = atoll(list_input[1].c_str());
+		}
+        string s;
+        for(int i=history.size()-k;i<history.size();i++){
+            s += to_string(i+1)+" "+history[i]+(i!=history.size()-1?"\n":"");
+        }
+        return {s,2};
+	}
+    else if(list_input[0]=="declare"){
+        if(list_input[1]=="-p"){
+            if(declare.find(list_input[2])!=declare.end()){
+                return {"declare -- "+list_input[2]+"="+"\""+declare[list_input[2]]+"\"",2};
+            }
+            return {"declare: "+list_input[2]+": not found",2};
+        }
+        else{
+            if(('0'<=list_input[1][0] && list_input[1][0]<='9')){
+                return {"declare: `"+list_input[1]+"': not a valid identifier",2};
+            }
+            string lhs,rhs;
+            int ind = 0;
+            while(ind<list_input[1].size() && list_input[1][ind]!='='){
+                lhs += list_input[1][ind];
+                ind += 1;
+            }
+            ind += 1;
+            while(ind<list_input[1].size() && list_input[1][ind]!='='){
+                rhs += list_input[1][ind];
+                ind += 1;
+            }
+            for(auto it:lhs){
+                if(!(it=='_' || ('a'<=it && it<='z') || ('A'<=it && it<='Z') || ('0'<=it && it<='9'))){return {"declare: `"+list_input[1]+"': not a valid identifier",2};}
+            }
+            declare[lhs] = rhs;
+            return {"",2};
+        }
+	}
     else {
         string execute;
         const char* path_env = getenv("PATH");

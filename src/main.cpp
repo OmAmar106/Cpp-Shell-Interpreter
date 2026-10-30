@@ -1,4 +1,6 @@
+
 #include "executor.h"
+#include <cstdlib>
 #include <iostream>
 #include <string>
 #include <bits/stdc++.h>
@@ -9,6 +11,8 @@
 
 using namespace std;
 namespace fs = std::filesystem;
+
+vector<string> command_history;
 
 vector<string> split_candidates(string output) {
     vector<string> candidates;
@@ -68,139 +72,181 @@ string read_input() {
     newt.c_cc[VTIME] = 0;
 
     if (tcsetattr(STDIN_FILENO, TCSANOW, &newt) != 0) {
-		perror("tcsetattr");
-		return "";
-	}
+        perror("tcsetattr");
+        return "";
+    }
+
     string input;
     char c;
     bool f = false;
 
+    int history_index = command_history.size();
+    string saved_input;
+
     while (read(STDIN_FILENO, &c, 1) == 1) {
+        if (c == '\033') {
+            char seq[2];
+
+            if (read(STDIN_FILENO, &seq[0], 1) != 1) continue;
+            if (read(STDIN_FILENO, &seq[1], 1) != 1) continue;
+
+            if (seq[0] == '[') {
+                if (seq[1] == 'A') {
+                    if (history_index == (int)command_history.size()) {
+                        saved_input = input;
+                    }
+
+                    if (history_index > 0) {
+                        history_index--;
+                        input = command_history[history_index];
+                    }
+                }
+                else if (seq[1] == 'B') {
+                    if (history_index < (int)command_history.size()) {
+                        history_index++;
+
+                        if (history_index == (int)command_history.size()) {
+                            input = saved_input;
+                        } else {
+                            input = command_history[history_index];
+                        }
+                    }
+                }
+
+                cout << "\r\033[2K$ " << input;
+                f = false;
+            }
+
+            continue;
+        }
+
         if (c == '\n' || c == '\r') {
             cout << '\n';
             break;
-        } else if (c == '\t') {
-			auto [flag, op] = check_complete(input);
+        }
+        else if (c == '\t') {
+            auto [flag, op] = check_complete(input);
 
-			if (flag) {
-				vector<string> candidates = split_candidates(op);
+            if (flag) {
+                vector<string> candidates = split_candidates(op);
 
-				if (candidates.size() == 1) {
-					string lastWord = input.substr(input.find_last_of(' ') == string::npos
-													? 0
-													: input.find_last_of(' ') + 1);
-					string completion = candidates[0];
+                if (candidates.size() == 1) {
+                    string lastWord = input.substr(input.find_last_of(' ') == string::npos
+                                                    ? 0
+                                                    : input.find_last_of(' ') + 1);
+                    string completion = candidates[0];
 
-					if (completion.rfind(lastWord, 0) == 0) {
-						string suffix = completion.substr(lastWord.size());
-						cout << suffix << " ";
-						input += suffix + " ";
-					}
-					f = false;
-					continue;
-				}
+                    if (completion.rfind(lastWord, 0) == 0) {
+                        string suffix = completion.substr(lastWord.size());
+                        cout << suffix << " ";
+                        input += suffix + " ";
+                    }
+                    f = false;
+                    continue;
+                }
 
-				if (!candidates.empty()) {
-					string lcp = candidates[0];
+                if (!candidates.empty()) {
+                    string lcp = candidates[0];
 
-					for (const auto& candidate : candidates) {
-						size_t i = 0;
-						while (i < lcp.size() && i < candidate.size() &&
-							lcp[i] == candidate[i]) {
-							i++;
-						}
-						lcp = lcp.substr(0, i);
-					}
+                    for (const auto& candidate : candidates) {
+                        size_t i = 0;
+                        while (i < lcp.size() && i < candidate.size() &&
+                            lcp[i] == candidate[i]) {
+                            i++;
+                        }
+                        lcp = lcp.substr(0, i);
+                    }
 
-					size_t lastSpace = input.find_last_of(' ');
-					size_t start = lastSpace == string::npos ? 0 : lastSpace + 1;
-					string current = input.substr(start);
+                    size_t lastSpace = input.find_last_of(' ');
+                    size_t start = lastSpace == string::npos ? 0 : lastSpace + 1;
+                    string current = input.substr(start);
 
-					if (lcp.size() > current.size()) {
-						string suffix = lcp.substr(current.size());
-						cout << suffix;
-						input += suffix;
-						f = false;
-					} else if (f) {
-						f = false;
-						cout << '\n';
-						for (const auto& candidate : candidates) {
-							cout << candidate << "  ";
-						}
-						cout << "\n$ " << input;
-					} else {
-						f = true;
-						cout << '\a';
-					}
+                    if (lcp.size() > current.size()) {
+                        string suffix = lcp.substr(current.size());
+                        cout << suffix;
+                        input += suffix;
+                        f = false;
+                    } else if (f) {
+                        f = false;
+                        cout << '\n';
+                        for (const auto& candidate : candidates) {
+                            cout << candidate << "  ";
+                        }
+                        cout << "\n$ " << input;
+                    } else {
+                        f = true;
+                        cout << '\a';
+                    }
 
-					continue;
-				}
-			}
+                    continue;
+                }
+            }
+
             if (input.find(' ') != string::npos) {
-				size_t pos = input.find_last_of(' ');
-				string prefix = input.substr(pos + 1);
+                size_t pos = input.find_last_of(' ');
+                string prefix = input.substr(pos + 1);
 
-				size_t slash = prefix.find_last_of('/');
-				string dir = slash == string::npos ? "." : prefix.substr(0, slash + 1);
-				string name = slash == string::npos ? prefix : prefix.substr(slash + 1);
+                size_t slash = prefix.find_last_of('/');
+                string dir = slash == string::npos ? "." : prefix.substr(0, slash + 1);
+                string name = slash == string::npos ? prefix : prefix.substr(slash + 1);
 
-				vector<string> matches;
+                vector<string> matches;
 
-				if (fs::exists(dir) && fs::is_directory(dir)) {
-					for (const auto& entry : fs::directory_iterator(dir)) {
-						string filename = entry.path().filename().string();
-						if (filename.rfind(name, 0) == 0) {
-							matches.push_back(filename);
-						}
-					}
-				}
+                if (fs::exists(dir) && fs::is_directory(dir)) {
+                    for (const auto& entry : fs::directory_iterator(dir)) {
+                        string filename = entry.path().filename().string();
+                        if (filename.rfind(name, 0) == 0) {
+                            matches.push_back(filename);
+                        }
+                    }
+                }
 
-				sort(matches.begin(), matches.end());
+                sort(matches.begin(), matches.end());
 
-				if (matches.size() == 1) {
-					string completion = matches[0].substr(name.size());
-					completion += fs::is_directory(fs::path(dir) / matches[0]) ? '/' : ' ';
-					cout << completion;
-					input += completion;
-					f = false;
-				} else if (matches.size() > 1) {
-					string common = matches[0];
+                if (matches.size() == 1) {
+                    string completion = matches[0].substr(name.size());
+                    completion += fs::is_directory(fs::path(dir) / matches[0]) ? '/' : ' ';
+                    cout << completion;
+                    input += completion;
+                    f = false;
+                } else if (matches.size() > 1) {
+                    string common = matches[0];
 
-					for (const auto& match : matches) {
-						size_t j = 0;
-						while (j < common.size() && j < match.size() && common[j] == match[j]) {
-							j++;
-						}
-						common = common.substr(0, j);
-					}
+                    for (const auto& match : matches) {
+                        size_t j = 0;
+                        while (j < common.size() && j < match.size() && common[j] == match[j]) {
+                            j++;
+                        }
+                        common = common.substr(0, j);
+                    }
 
-					if (common.size() > name.size()) {
-						string completion = common.substr(name.size());
-						cout << completion;
-						input += completion;
-						f = false;
-					} else if (f) {
-						f = false;
-						cout << '\n';
-						for (const auto& match : matches) {
-							cout << match;
-							if (fs::is_directory(fs::path(dir) / match)) {
-								cout << '/';
-							}
-							cout << "  ";
-						}
-						cout << "\n$ " << input;
-					} else {
-						cout << '\a';
-						f = true;
-					}
-				} else {
-					cout << '\a';
-					f = false;
-				}
+                    if (common.size() > name.size()) {
+                        string completion = common.substr(name.size());
+                        cout << completion;
+                        input += completion;
+                        f = false;
+                    } else if (f) {
+                        f = false;
+                        cout << '\n';
+                        for (const auto& match : matches) {
+                            cout << match;
+                            if (fs::is_directory(fs::path(dir) / match)) {
+                                cout << '/';
+                            }
+                            cout << "  ";
+                        }
+                        cout << "\n$ " << input;
+                    } else {
+                        cout << '\a';
+                        f = true;
+                    }
+                } else {
+                    cout << '\a';
+                    f = false;
+                }
 
-				continue;
-			}
+                continue;
+            }
 
             vector<string> matches;
 
@@ -247,13 +293,15 @@ string read_input() {
                 f = false;
                 cout << '\a';
             }
-        } else if (c == 127 || c == '\b') {
+        }
+        else if (c == 127 || c == '\b') {
             if (!input.empty()) {
                 input.pop_back();
                 cout << "\b \b";
                 f = false;
             }
-        } else {
+        }
+        else {
             f = false;
             input += c;
             cout << c;
@@ -268,24 +316,61 @@ int main() {
     cout << unitbuf;
     cerr << unitbuf;
 
+	const char* histfile = getenv("HISTFILE");
+	string filename = histfile ? histfile : "";
+	if(!filename.empty()){
+		ifstream in(filename);
+		string line;
+		while(getline(in,line)){
+			push_back(line);
+		}
+	}
+
     while (true) {
+        string completed = check_jobs();
+
+        if (!completed.empty()) {
+            cout << completed << endl;
+        }
+
         cout << "$ ";
 
         string a = read_input();
+		push_back(a);
 
         if (a.empty() && cin.eof()) {
             return 0;
         }
 
+        if (!a.empty()) {
+            if (command_history.empty() || command_history.back() != a) {
+                command_history.push_back(a);
+            }
+        }
+
         try {
             pair<string, int> response = exe(a);
+
             if (response.second == 100) {
+				if(!filename.empty()){
+					ofstream out(filename);
+					for(auto it:get_history()){
+						out<<it<<endl;
+					}
+				}
                 return 0;
             }
-            if (response.first.empty()) {
-                continue;
+
+            if (!response.first.empty()) {
+                cout << response.first << endl;
             }
-            cout << response.first << endl;
+
+            string s1 = check_jobs();
+
+            if (!s1.empty()) {
+                cout << s1 << endl;
+            }
+
         } catch (exception& e) {
             cout << a << ": command not found" << endl;
         }
