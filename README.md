@@ -1,8 +1,8 @@
-# Cpp-Shell
+# Cpp-Shell-Interpreter
 
 A POSIX-style shell written from scratch in C++.
 
-Cpp-Shell is an interactive command-line shell that implements a practical subset of common shell behavior: command execution, builtins, quoting, variable expansion, redirection, pipelines, tab completion, background jobs, and history.
+Cpp-Shell-Interpreter is an interactive command-line shell that implements a practical subset of common shell behavior: command execution, builtins, quoting, variable expansion, redirection, pipelines, tab completion, background jobs, and history.
 
 ## Features
 
@@ -41,21 +41,21 @@ Cpp-Shell is an interactive command-line shell that implements a practical subse
 ## Build
 
 ```sh
-git clone https://github.com/OmAmar106/Cpp-Shell.git
-cd Cpp-Shell
-g++ -std=c++23 -O2 -o cpp-shell src/*.cpp
+git clone https://github.com/OmAmar106/Cpp-Shell-Interpreter.git
+cd Cpp-Shell-Interpreter
+g++ -std=c++23 -O2 -o Cpp-Shell-Interpreter src/*.cpp
 ```
 
 ## Run
 
 ```sh
-./cpp-shell
+./Cpp-Shell-Interpreter
 ```
 
 You can also pipe commands directly into the shell:
 
 ```sh
-printf 'echo hello\npwd\nexit\n' | ./cpp-shell
+printf 'echo hello\npwd\nexit\n' | ./Cpp-Shell-Interpreter
 ```
 
 ## Usage
